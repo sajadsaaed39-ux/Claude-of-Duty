@@ -16,5 +16,5 @@ A Call of Duty-quality FPS in Three.js, built from a single prompt.
 - 🐛 [Report an issue](https://github.com/sajadsaaed39-ux/Claude-of-Duty/issues).
 - 👤 [Explore the creator's projects](https://omgithub.com/sajadsaaed39-ux).
 - 🌍 [Create with OMGithub](https://omgithub.com).
-- 🧬 [Explore the remix source](https://github.com/mshumer/Claude-of-Duty/tree/d9b237b75c9304ab8d9ef4cfa0c3568c7c11a853).
+- 🧬 [Explore the remix source](https://github.com/sajadsaaed39-ux/Claude-of-Duty).
 <!-- omgithub:readme:end -->
