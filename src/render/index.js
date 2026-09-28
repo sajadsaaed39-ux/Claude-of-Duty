@@ -17,7 +17,7 @@ import { createComposite, createFxaa, createDebug, createViewComposite } from '.
 import { buildFallbackEnvironment } from './env.js';
 import { RenderProbeScene } from './probe.js';
 
-const QUALITY_LEVEL = { low: 0, medium: 1, high: 2, ultra: 3 };
+const QUALITY_LEVEL = { potato: -1, low: 0, medium: 1, high: 2, ultra: 3, auto: 0 };
 
 /**
  * Registration range at or below which a punctual light counts as a room/street
@@ -866,7 +866,10 @@ export class RenderSystem {
   // ==========================================================================
 
   resize(w, h, ctx) {
-    const pr = Math.min(globalThis.devicePixelRatio || 1, 1.5);
+    // Low-end presets cap DPR harder: potato/low at 1.0 is ~44% fewer pixels
+    // than 1.5x and is the single biggest fps lever on integrated GPUs.
+    const dprCap = this.qLevel <= 0 ? 1.0 : 1.5;
+    const pr = Math.min(globalThis.devicePixelRatio || 1, dprCap);
     this.renderer.setPixelRatio(pr);
     this.renderer.setSize(w, h, false);
 

@@ -19,6 +19,21 @@ export const UNITS = {
 };
 
 export const QUALITY_PRESETS = {
+  potato: {
+    renderScale: 0.5,
+    shadowMapSize: 512,
+    cascades: 2,
+    shadowDistance: 40,
+    taa: false,
+    gtao: false,
+    ssr: false,
+    volumetrics: false,
+    motionBlur: false,
+    bloom: false,
+    anisotropy: 1,
+    particleBudget: 500,
+    decalBudget: 16,
+  },
   low: {
     renderScale: 0.72,
     shadowMapSize: 1024,
@@ -82,7 +97,7 @@ export const QUALITY_PRESETS = {
 };
 
 export const DEFAULTS = {
-  quality: 'ultra',
+  quality: 'auto',
   fov: 80, // horizontal-ish vertical FOV, CoD default feel
   adsFovScale: 0.72,
   sensitivity: 0.0022,
@@ -93,9 +108,34 @@ export const DEFAULTS = {
   deterministic: false,
 };
 
+/**
+ * Pick a safe starting preset for the current device.
+ * Desktop with many cores keeps high/ultra, anything mobile or low-RAM
+ * falls back to potato/low so the game boots playable instead of 5 fps.
+ * Override with `?q=low|medium|high|ultra|potato` in the URL.
+ */
+export function detectDeviceQuality() {
+  try {
+    const nav = globalThis.navigator ?? {};
+    const ua = String(nav.userAgent ?? '').toLowerCase();
+    const mobile = /android|iphone|ipad|ipod|mobile|tablet|touch/.test(ua)
+      || (globalThis.matchMedia?.('(pointer: coarse)').matches ?? false);
+    const cores = nav.hardwareConcurrency ?? 4;
+    const mem = nav.deviceMemory ?? 4; // GB, Chrome-only; undefined elsewhere
+    const smallScreen = Math.min(globalThis.innerWidth || 1920, globalThis.innerHeight || 1080) < 500;
+    if (mobile || smallScreen) return cores >= 8 && mem >= 6 ? 'low' : 'potato';
+    if (cores <= 4 || mem <= 4) return 'low';
+    if (cores <= 8) return 'medium';
+    return 'high'; // ultra stays opt-in via ?q=ultra or the pause menu
+  } catch {
+    return 'low';
+  }
+}
+
 export function createConfig(overrides = {}) {
   const cfg = { ...DEFAULTS, ...overrides };
-  cfg.q = { ...QUALITY_PRESETS[cfg.quality] };
+  if (cfg.quality === 'auto') cfg.quality = detectDeviceQuality();
+  cfg.q = { ...QUALITY_PRESETS[cfg.quality] ?? QUALITY_PRESETS.low };
   cfg.setQuality = (name) => {
     if (!QUALITY_PRESETS[name]) throw new Error(`unknown quality preset "${name}"`);
     cfg.quality = name;

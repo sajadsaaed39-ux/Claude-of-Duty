@@ -51,6 +51,12 @@ export class Input {
     this.gamepadIndex = null;
     this.stick = { moveX: 0, moveY: 0, lookX: 0, lookY: 0 };
 
+    // --- touch (mobile/tablet): left half = move stick, right half = look drag.
+    // A short tap on the right half counts as fire (Mouse0) so phones can shoot.
+    this.touchMove = { x: 0, y: 0 };
+    this._touch = { moveId: null, lookId: null, mx: 0, my: 0, lx: 0, ly: 0, lookDX: 0, lookDY: 0, tapTime: 0, tapX: 0, tapY: 0, fireHold: false };
+    this.isTouch = false;
+
     this._bound = {
       keydown: this._onKeyDown.bind(this),
       keyup: this._onKeyUp.bind(this),
@@ -61,6 +67,9 @@ export class Input {
       lockchange: this._onLockChange.bind(this),
       blur: this._onBlur.bind(this),
       contextmenu: (e) => e.preventDefault(),
+      touchstart: this._onTouchStart.bind(this),
+      touchmove: this._onTouchMove.bind(this),
+      touchend: this._onTouchEnd.bind(this),
     };
   }
 
@@ -74,6 +83,10 @@ export class Input {
     addEventListener('blur', this._bound.blur);
     document.addEventListener('pointerlockchange', this._bound.lockchange);
     this.canvas.addEventListener('contextmenu', this._bound.contextmenu);
+    this.canvas.addEventListener('touchstart', this._bound.touchstart, { passive: false });
+    this.canvas.addEventListener('touchmove', this._bound.touchmove, { passive: false });
+    this.canvas.addEventListener('touchend', this._bound.touchend, { passive: false });
+    this.canvas.addEventListener('touchcancel', this._bound.touchend, { passive: false });
   }
 
   detach() {
@@ -86,6 +99,10 @@ export class Input {
     removeEventListener('blur', this._bound.blur);
     document.removeEventListener('pointerlockchange', this._bound.lockchange);
     this.canvas.removeEventListener('contextmenu', this._bound.contextmenu);
+    this.canvas.removeEventListener('touchstart', this._bound.touchstart);
+    this.canvas.removeEventListener('touchmove', this._bound.touchmove);
+    this.canvas.removeEventListener('touchend', this._bound.touchend);
+    this.canvas.removeEventListener('touchcancel', this._bound.touchend);
   }
 
   requestPointerLock() {
@@ -137,6 +154,77 @@ export class Input {
     this._pendingWheel += Math.sign(e.deltaY);
   }
 
+  _onTouchStart(e) {
+    if (!this.enabled) return;
+    this.isTouch = true;
+    e.preventDefault();
+    const w = globalThis.innerWidth || 1000;
+    for (const t of e.changedTouches) {
+      const leftSide = t.clientX < w * 0.45;
+      if (leftSide && this._touch.moveId === null) {
+        this._touch.moveId = t.identifier;
+        this._touch.mx = t.clientX;
+        this._touch.my = t.clientY;
+        this.touchMove.x = 0;
+        this.touchMove.y = 0;
+      } else if (!leftSide && this._touch.lookId === null) {
+        this._touch.lookId = t.identifier;
+        this._touch.lx = t.clientX;
+        this._touch.ly = t.clientY;
+        this._touch.tapTime = performance.now();
+        this._touch.tapX = t.clientX;
+        this._touch.tapY = t.clientY;
+      }
+    }
+  }
+
+  _onTouchMove(e) {
+    if (!this.enabled) return;
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (t.identifier === this._touch.moveId) {
+        // 60px stick radius -> -1..1
+        const dx = (t.clientX - this._touch.mx) / 60;
+        const dy = (t.clientY - this._touch.my) / 60;
+        const len = Math.hypot(dx, dy) || 1;
+        const cl = Math.min(1, len);
+        this.touchMove.x = (dx / len) * cl;
+        this.touchMove.y = -(dy / len) * cl;
+      } else if (t.identifier === this._touch.lookId) {
+        this._touch.lookDX += t.clientX - this._touch.lx;
+        this._touch.lookDY += t.clientY - this._touch.ly;
+        this._touch.lx = t.clientX;
+        this._touch.ly = t.clientY;
+      }
+    }
+  }
+
+  _onTouchEnd(e) {
+    if (!this.enabled) return;
+    for (const t of e.changedTouches) {
+      if (t.identifier === this._touch.moveId) {
+        this._touch.moveId = null;
+        this.touchMove.x = 0;
+        this.touchMove.y = 0;
+      } else if (t.identifier === this._touch.lookId) {
+        // Short tap (<250ms, <12px drift) = fire one shot.
+        const dt = performance.now() - this._touch.tapTime;
+        const drift = Math.hypot(t.clientX - this._touch.tapX, t.clientY - this._touch.tapY);
+        if (dt < 250 && drift < 12) {
+          this._pendingDown.add('Mouse0');
+          this._pendingUp.add('Mouse0');
+        }
+        this._touch.lookId = null;
+        this._touch.lookDX = 0;
+        this._touch.lookDY = 0;
+      }
+    }
+    if (e.touches.length === 0) {
+      this.touchMove.x = 0;
+      this.touchMove.y = 0;
+    }
+  }
+
   _onLockChange() {
     this.pointerLocked = document.pointerLockElement === this.canvas;
     if (!this.pointerLocked) this._onBlur();
@@ -166,10 +254,15 @@ export class Input {
     this._pendingUp.clear();
 
     const s = this.config.sensitivity;
-    this.look.x = this.frozen ? 0 : this._rawLook.x * s;
-    this.look.y = this.frozen ? 0 : this._rawLook.y * s * (this.config.invertY ? -1 : 1);
+    // Touch drag is in px/frame: scale ~2x mouse sensitivity for usable turn speed.
+    const tdx = this._touch.lookDX;
+    const tdy = this._touch.lookDY;
+    this.look.x = this.frozen ? 0 : (this._rawLook.x * s) + (tdx * s * 2.2);
+    this.look.y = this.frozen ? 0 : (this._rawLook.y * s + tdy * s * 2.2) * (this.config.invertY ? -1 : 1);
     this._rawLook.x = 0;
     this._rawLook.y = 0;
+    this._touch.lookDX = 0;
+    this._touch.lookDY = 0;
 
     this.wheel = this._pendingWheel;
     this._pendingWheel = 0;
@@ -239,8 +332,9 @@ export class Input {
   moveVector(out = { x: 0, y: 0 }) {
     let x = (this.action('right') ? 1 : 0) - (this.action('left') ? 1 : 0);
     let y = (this.action('forward') ? 1 : 0) - (this.action('back') ? 1 : 0);
-    x += this.stick.moveX;
+    x += this.stick.moveX + (this.touchMove?.x ?? 0);
     y -= this.stick.moveY;
+    y += (this.touchMove?.y ?? 0);
     const len = Math.hypot(x, y);
     if (len > 1) {
       x /= len;

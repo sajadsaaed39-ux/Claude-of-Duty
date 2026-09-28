@@ -25,7 +25,9 @@ const capture = params.get('capture') === '1';
 const lockstep = capture && params.get('lockstep') === '1';
 
 const config = createConfig({
-  quality: params.get('q') ?? 'ultra',
+  // `?q=auto` (default) picks potato/low/medium/high from the device.
+  // Force a preset with `?q=potato|low|medium|high|ultra` if the auto pick is wrong.
+  quality: params.get('q') ?? 'auto',
   deterministic: capture,
 });
 
@@ -51,11 +53,22 @@ try {
   await engine.init();
 } catch (err) {
   console.error('[boot] init failed', err);
+  const msg = String(err?.message ?? err);
+  const isWebGL2 = /WebGL2/i.test(msg);
+  const help = isWebGL2
+    ? `This game needs WebGL2.\n\n` +
+      `يحتاج هذا المشروع WebGL2.\n` +
+      `• Use Chrome / Edge 113+ or Firefox 121+ (Safari 15+ on macOS/iOS)\n` +
+      `• On old laptops enable hardware acceleration in browser settings\n` +
+      `• Headless / VM without GPU will fail — run on a real device\n`
+    : `If the screen is black or fps is very low, retry with a lighter preset:\n` +
+      `  ?q=potato  →  ?q=low  →  ?q=medium\n` +
+      `مثال: http://127.0.0.1:5173/?q=potato\n`;
   document.body.insertAdjacentHTML(
     'beforeend',
     `<pre style="position:fixed;inset:0;padding:2rem;color:#f66;background:#000;
        font:12px/1.5 ui-monospace,monospace;overflow:auto;z-index:9999;white-space:pre-wrap">
-BOOT FAILURE\n\n${err.stack ?? err.message}</pre>`
+BOOT FAILURE\n\n${err.stack ?? err.message}\n\n${help}</pre>`
   );
   throw err;
 }

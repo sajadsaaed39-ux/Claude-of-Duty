@@ -1,6 +1,6 @@
 import { el, setText, setStyle, clamp, damp, ease } from './util.js';
 
-const PRESETS = ['low', 'medium', 'high', 'ultra'];
+const PRESETS = ['potato', 'low', 'medium', 'high', 'ultra'];
 
 /**
  * Pause / settings menu.
@@ -85,7 +85,7 @@ export class PauseMenu {
       this.sens.set(1);
       this.fov.set(80);
       this.ctx.config.invertY = false;
-      this.setQuality('ultra');
+      this.setQuality('high');
     });
     el('div', 'hint', inner, 'ESC RESUME · WASD MOVE · SHIFT SPRINT · R RELOAD · F USE');
 
